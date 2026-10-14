@@ -11,7 +11,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
@@ -23,7 +25,7 @@
   "devDependencies": {
     "@chitin-id/shell-core": "*",
     "typescript": "^5.7.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.11"
   },
   "license": "Apache-2.0",
   "repository": {
@@ -31,5 +33,7 @@
     "url": "https://github.com/chitin-id/chitin-shell.git",
     "directory": "packages/mcp"
   },
-  "publishConfig": { "access": "public" }
+  "publishConfig": {
+    "access": "public"
+  }
 }

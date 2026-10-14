@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /**
  * Chitin Shell — Agent Container Server
  *
@@ -19,7 +20,8 @@ import {
 } from './shared/http-utils.js';
 import {
   createIntent,
-  generateKeyPair,
+  verifySignature,
+  type AgentKeyPair,
   validateIntentStructure,
   type CreateIntentParams,
   type IntentV1,
@@ -36,7 +38,12 @@ const POLICY_URL = process.env.POLICY_URL ?? 'http://chitin-policy:3100';
 // Agent State
 // ---------------------------------------------------------------------------
 
-const keyPair = generateKeyPair();
+const keyFile = process.env.AGENT_KEY_FILE;
+if (!keyFile) throw new Error("AGENT_KEY_FILE is required");
+const keyData = JSON.parse(readFileSync(keyFile, "utf8"));
+const keyPair: AgentKeyPair = { publicKey: Buffer.from(keyData.publicKey, "hex"), privateKey: Buffer.from(keyData.privateKey, "hex"), did: keyData.did };
+if (keyPair.publicKey.length !== 32 || keyPair.privateKey.length !== 32 || keyPair.did !== `did:key:${Buffer.from(keyPair.publicKey).toString("base64url")}`
+  || !verifySignature(createIntent({ action: "think", params: {} }, keyPair), keyPair.publicKey)) throw new Error("Invalid agent signing key");
 const startedAt = new Date().toISOString();
 
 console.log(`[agent] Agent DID: ${keyPair.did}`);

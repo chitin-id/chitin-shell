@@ -25,9 +25,12 @@ services:
       - chitin-isolated
     environment:
       - AGENT_PORT=3000
+      - AGENT_KEY_FILE=/app/agent-key.json
       - POLICY_URL=http://chitin-policy:3100
       - NODE_ENV=production
-    # No secrets here — this is the whole point
+    volumes:
+      - ../.local/agent-key.json:/app/agent-key.json:ro
+    # Only the agent identity signing key is present; no vault or approval credentials.
     read_only: true
     tmpfs:
       - /tmp:size=50M
@@ -60,6 +63,8 @@ services:
       - chitin-proxy
     environment:
       - POLICY_PORT=3100
+      - SHELL_APPROVAL_SECRET=${SHELL_APPROVAL_SECRET:?Set a host-generated approval secret}
+      - TRUSTED_AGENT_DIDS=${TRUSTED_AGENT_DIDS:?Set the trusted agent signing identity}
       - PROXY_URL=http://chitin-proxy:3200
       - NODE_ENV=production
       # Uncomment to use custom policy file:
@@ -98,6 +103,7 @@ services:
       - chitin-proxy
     environment:
       - PROXY_PORT=3200
+      - SHELL_APPROVAL_SECRET=${SHELL_APPROVAL_SECRET:?Set a host-generated approval secret}
       - VAULT_TYPE=memory
       - NODE_ENV=production
     env_file:

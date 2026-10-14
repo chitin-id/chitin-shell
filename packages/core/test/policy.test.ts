@@ -1,3 +1,6 @@
+import { generateKeyPair } from "../src/intent/signer.js";
+import { createIntent } from "../src/intent/builder.js";
+const testKeys = generateKeyPair();
 import { describe, it, expect, beforeEach } from 'vitest';
 import { determineTier } from '../src/policy/tier.js';
 import { RateLimiter } from '../src/policy/rate-limiter.js';
@@ -14,16 +17,7 @@ function mockIntent(
   actionType: string,
   params: Record<string, unknown> = {},
 ): IntentV1 {
-  return {
-    version: '1.0',
-    intent_id: 'test-intent-1',
-    agent_did: 'did:key:test-agent',
-    timestamp: new Date().toISOString(),
-    action: { type: actionType, params },
-    context: { triggered_by: 'user_message', session_id: 'test-session' },
-    nonce: Date.now(),
-    signature: 'aa'.repeat(32),
-  };
+  return createIntent({ action: actionType, params, context: { triggered_by: "user_message", session_id: "test-session" } }, testKeys);
 }
 
 // ---------------------------------------------------------------------------
@@ -187,7 +181,8 @@ describe('Policy Engine', () => {
       contacts: ['mallory@evil.com'],
       domains: ['evil.com'],
     };
-    engine = new PolicyEngine(policy);
+    policy.tiers.tier_2.verification = "local";
+    engine = new PolicyEngine(policy, undefined, undefined, { trustedDids: [testKeys.did] });
   });
 
   it('tier 0 actions are always approved', () => {

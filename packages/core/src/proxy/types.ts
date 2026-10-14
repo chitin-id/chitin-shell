@@ -12,6 +12,8 @@ export interface VaultEntry {
   metadata?: Record<string, unknown>;
   created_at: string;
   expires_at?: string;
+  /** HTTPS origins permitted to receive this credential. Empty/missing denies use. */
+  allowed_origins?: string[];
 }
 
 /** Credential vault interface — implementations can be in-memory, keychain, or TEE-backed */

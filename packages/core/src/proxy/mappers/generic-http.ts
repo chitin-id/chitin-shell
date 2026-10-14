@@ -1,3 +1,4 @@
+import { safeFetch } from "../safe-fetch.js";
 import type { ActionMapper, IVault } from '../types.js';
 
 /**
@@ -50,6 +51,11 @@ export class GenericHttpMapper implements ActionMapper {
 
     if (credential_key) {
       const entry = await vault.get(credential_key);
+      const destination = new URL(url);
+      if (!entry || destination.protocol !== 'https:' || !entry.allowed_origins?.includes(destination.origin)) {
+        throw new Error('Credential is not authorized for this destination');
+      }
+      if (entry.expires_at && Date.parse(entry.expires_at) <= Date.now()) throw new Error('Credential has expired');
       if (entry) {
         switch (entry.type) {
           case 'bearer':
@@ -65,10 +71,12 @@ export class GenericHttpMapper implements ActionMapper {
       }
     }
 
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      redirect: 'error',
+      signal: AbortSignal.timeout(10_000),
     });
 
     const contentType = response.headers.get('content-type') ?? '';

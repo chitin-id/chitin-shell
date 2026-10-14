@@ -38,7 +38,7 @@ export function verifySignature(intent: IntentV1, publicKey: Uint8Array): boolea
   return crypto.verify(null, Buffer.from(payload), key, sigBuffer);
 }
 
-function canonicalize(obj: unknown): string {
+export function canonicalize(obj: unknown): string {
   return JSON.stringify(sortKeys(obj));
 }
 

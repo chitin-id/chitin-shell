@@ -12,7 +12,6 @@
  * - chitin-proxy (can talk to proxy)
  */
 
-import crypto from 'node:crypto';
 import {
   createJsonServer,
   fetchJson,
@@ -22,6 +21,7 @@ import {
 } from './shared/http-utils.js';
 import {
   PolicyEngine,
+  ApprovalAuthority,
   loadPolicyFromFile,
   loadDefaultPolicy,
   validateIntentStructure,
@@ -42,11 +42,14 @@ const POLICY_CONFIG_PATH = process.env.POLICY_CONFIG_PATH;
 // State
 // ---------------------------------------------------------------------------
 
+const approvalSecret = process.env.SHELL_APPROVAL_SECRET;
+if (!approvalSecret) throw new Error("SHELL_APPROVAL_SECRET is required");
+const approvalAuthority = new ApprovalAuthority(approvalSecret);
 let policyEngine: PolicyEngine;
 const startedAt = new Date().toISOString();
 
 // Approval tokens: short-lived map of token -> intent_id (prevents replay)
-const approvalTokens = new Map<string, { intent_id: string; expires: number }>();
+const approvalTokens = new Map<string, { intent_id: string; intent_hash: string; expires: number }>();
 const APPROVAL_TTL_MS = 30_000; // 30 seconds
 
 // Cleanup expired tokens every minute
@@ -74,7 +77,9 @@ async function initPolicy(): Promise<void> {
     config = loadDefaultPolicy();
   }
 
-  policyEngine = new PolicyEngine(config);
+  const trustedDids = (process.env.TRUSTED_AGENT_DIDS || "").split(",").filter(Boolean);
+  if (!trustedDids.length) throw new Error("TRUSTED_AGENT_DIDS is required");
+  policyEngine = new PolicyEngine(config, undefined, undefined, { trustedDids, approvalAuthority });
   console.log(`[policy] Policy engine initialized (version: ${config.version})`);
 }
 
@@ -120,9 +125,10 @@ async function handleVerify(body: unknown): Promise<RouteResponse> {
   }
 
   // Generate a short-lived approval token for the proxy
-  const proxyToken = crypto.randomUUID();
+  const proxyToken = verification.approval_token!;
   approvalTokens.set(proxyToken, {
     intent_id: intentV1.intent_id,
+    intent_hash: PolicyEngine.computeIntentHash(intentV1),
     expires: Date.now() + APPROVAL_TTL_MS,
   });
 
@@ -205,7 +211,7 @@ async function handleExecute(body: unknown): Promise<RouteResponse> {
   }
 
   const intentV1 = intent as IntentV1;
-  if (tokenEntry.intent_id !== intentV1.intent_id) {
+  if (tokenEntry.intent_id !== intentV1.intent_id || tokenEntry.intent_hash !== PolicyEngine.computeIntentHash(intentV1)) {
     return {
       status: 403,
       body: { error: 'Approval token does not match intent_id' },

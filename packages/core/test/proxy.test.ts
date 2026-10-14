@@ -1,3 +1,4 @@
+import { localApprovalAuthority } from "../src/policy/approval.js";
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryVault } from '../src/proxy/vault.js';
 import { Sanitizer } from '../src/proxy/sanitizer.js';
@@ -262,7 +263,7 @@ describe('Executor', () => {
 
   it('returns error when no mapper is registered for action type', async () => {
     const intent = mockIntent('unknown_action');
-    const result = await executor.execute(intent, 'approval-token');
+    const result = await executor.execute(intent, localApprovalAuthority.issue(intent));
 
     expect(result.status).toBe('error');
     expect(result.error).toContain('No mapper registered for action');
@@ -280,7 +281,7 @@ describe('Executor', () => {
     executor.registerMapper(mapper);
 
     const intent = mockIntent('greet', { name: 'Eiji' });
-    const result = await executor.execute(intent, 'approval-token');
+    const result = await executor.execute(intent, localApprovalAuthority.issue(intent));
 
     expect(result.status).toBe('success');
     const data = result.data as Record<string, unknown>;
@@ -300,7 +301,7 @@ describe('Executor', () => {
     executor.registerMapper(mapper);
 
     const intent = mockIntent('leak_key');
-    const result = await executor.execute(intent, 'approval-token');
+    const result = await executor.execute(intent, localApprovalAuthority.issue(intent));
 
     expect(result.status).toBe('success');
     expect(result.sanitized).toBe(true);
@@ -321,7 +322,7 @@ describe('Executor', () => {
     executor.registerMapper(mapper);
 
     const intent = mockIntent('fail_with_secret');
-    const result = await executor.execute(intent, 'approval-token');
+    const result = await executor.execute(intent, localApprovalAuthority.issue(intent));
 
     expect(result.status).toBe('error');
     expect(result.sanitized).toBe(true);
@@ -340,7 +341,7 @@ describe('Executor', () => {
     executor.registerMapper(mapper);
 
     const intent = mockIntent('slow_op');
-    const result = await executor.execute(intent, 'approval-token');
+    const result = await executor.execute(intent, localApprovalAuthority.issue(intent));
 
     expect(result.status).toBe('success');
     expect(result.execution_time_ms).toBeGreaterThanOrEqual(40);
@@ -349,7 +350,7 @@ describe('Executor', () => {
   it('registerMapper adds a custom mapper', async () => {
     // Before registration, should fail
     const intentBefore = mockIntent('custom_action');
-    const beforeResult = await executor.execute(intentBefore, 'token');
+    const beforeResult = await executor.execute(intentBefore, localApprovalAuthority.issue(intentBefore));
     expect(beforeResult.status).toBe('error');
 
     // Register and try again
@@ -365,7 +366,7 @@ describe('Executor', () => {
 
     await vault.set('my-cred', { type: 'api_key', value: 'v' });
     const intentAfter = mockIntent('custom_action', { foo: 'bar' });
-    const afterResult = await executor.execute(intentAfter, 'token');
+    const afterResult = await executor.execute(intentAfter, localApprovalAuthority.issue(intentAfter));
 
     expect(afterResult.status).toBe('success');
     const data = afterResult.data as Record<string, unknown>;

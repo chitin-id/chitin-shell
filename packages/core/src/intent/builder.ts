@@ -22,7 +22,7 @@ export function createIntent(params: CreateIntentParams, keyPair: AgentKeyPair):
         parent_intent_id: params.context.parent_intent_id,
       }),
     },
-    nonce: Date.now(),
+    nonce: crypto.randomBytes(6).readUIntBE(0, 6) + 1,
   };
 
   const signature = signIntent(unsigned, keyPair.privateKey);

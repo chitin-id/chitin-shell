@@ -1,25 +1,44 @@
-import crypto from 'node:crypto';
 import type { IntentV1, SecurityTier } from '../intent/types.js';
 import type { PolicyConfig, VerificationResult } from './types.js';
 import { determineTier } from './tier.js';
 import { RateLimiter } from './rate-limiter.js';
 import type { OnChainPolicyLoader } from './on-chain-loader.js';
+import { validateIntent } from '../intent/validator.js';
+import { ApprovalAuthority, localApprovalAuthority } from './approval.js';
+
+export interface PolicySecurity {
+  trustedDids?: string[];
+  trustedKeys?: Record<string, Uint8Array>;
+  approvalAuthority?: ApprovalAuthority;
+}
 
 export class PolicyEngine {
   private policy: PolicyConfig;
   private rateLimiter: RateLimiter;
   private onChainLoader?: OnChainPolicyLoader;
+  private security: PolicySecurity;
+  private nonces = new Map<string, number>();
 
-  constructor(policy: PolicyConfig, rateLimiter?: RateLimiter, onChainLoader?: OnChainPolicyLoader) {
+  constructor(policy: PolicyConfig, rateLimiter?: RateLimiter, onChainLoader?: OnChainPolicyLoader, security: PolicySecurity = {}) {
     this.policy = policy;
     this.rateLimiter = rateLimiter ?? new RateLimiter();
     this.onChainLoader = onChainLoader;
+    this.security = security;
   }
 
   verify(intent: IntentV1): VerificationResult {
+    return this.verifyAuthorized(intent, false);
+  }
+
+  private verifyAuthorized(intent: IntentV1, allowOnChain: boolean): VerificationResult {
+    const invalid = this.validateAuthorization(intent);
+    if (invalid) return { approved: false, tier: 3, reason: invalid };
     const tier = determineTier(intent.action.type, this.policy);
     const tierKey = `tier_${tier}` as keyof PolicyConfig['tiers'];
     const tierConfig = this.policy.tiers[tierKey];
+    if (tierConfig.verification === 'on_chain' && !allowOnChain) {
+      return { approved: false, tier, reason: 'This action requires on-chain verification' };
+    }
 
     // Tier 3: always requires human approval
     if (tier === 3) {
@@ -43,7 +62,7 @@ export class PolicyEngine {
         approved: true,
         tier,
         reason: 'Tier 0: auto-approved',
-        approval_token: crypto.randomUUID(),
+        approval_token: (this.security.approvalAuthority ?? localApprovalAuthority).issue(intent),
       };
     }
 
@@ -77,7 +96,7 @@ export class PolicyEngine {
       approved: true,
       tier,
       reason: `Tier ${tier}: approved after ${tierConfig.verification} verification`,
-      approval_token: crypto.randomUUID(),
+      approval_token: (this.security.approvalAuthority ?? localApprovalAuthority).issue(intent),
     };
   }
 
@@ -93,7 +112,8 @@ export class PolicyEngine {
     }
 
     // For tier 0-1, still verify locally (fast path)
-    const localResult = this.verify(intent);
+    const localResult = this.verifyAuthorized(intent, true);
+    if (!localResult.approved) return localResult;
     if (localResult.tier <= 1) return localResult;
 
     // For tier 2+, verify on-chain
@@ -109,6 +129,8 @@ export class PolicyEngine {
       tier: onChainResult.tier as SecurityTier,
       reason: onChainResult.reason,
       requires_human: onChainResult.tier === 3,
+      approval_token: onChainResult.approved && onChainResult.tier !== 3
+        ? (this.security.approvalAuthority ?? localApprovalAuthority).issue(intent) : undefined,
     };
   }
 
@@ -117,12 +139,32 @@ export class PolicyEngine {
    * Returns a 0x-prefixed hex string suitable for use as a bytes32 on-chain.
    */
   static computeIntentHash(intent: IntentV1): string {
-    const canonical = JSON.stringify(intent, Object.keys(intent).sort());
-    return '0x' + crypto.createHash('sha256').update(canonical).digest('hex');
+    return ApprovalAuthority.intentHash(intent);
   }
 
   getPolicy(): PolicyConfig {
     return this.policy;
+  }
+
+  private validateAuthorization(intent: IntentV1): string | null {
+    try {
+      let key = this.security.trustedKeys?.[intent.agent_did];
+      if (!key && this.security.trustedDids?.includes(intent.agent_did) && intent.agent_did.startsWith('did:key:')) {
+        key = Buffer.from(intent.agent_did.slice('did:key:'.length), 'base64url');
+      }
+      if (!key || key.length !== 32) return 'Agent identity is not trusted';
+      const result = validateIntent(intent, key);
+      if (!result.valid) return result.errors.join('; ');
+      const now = Date.now();
+      const timestamp = Date.parse(intent.timestamp);
+      if (timestamp < now - 300_000 || timestamp > now + 60_000) return 'Intent timestamp is expired or in the future';
+      if (!Number.isSafeInteger(intent.nonce)) return 'Invalid intent nonce';
+      const nonceKey = `${intent.agent_did}:${intent.nonce}`;
+      for (const [key, expires] of this.nonces) if (expires < now) this.nonces.delete(key);
+      if (this.nonces.has(nonceKey)) return 'Intent nonce has already been used';
+      this.nonces.set(nonceKey, timestamp + 360_000);
+      return null;
+    } catch { return 'Invalid signed intent'; }
   }
 
   private checkBlacklist(intent: IntentV1): Omit<VerificationResult, 'tier'> | null {

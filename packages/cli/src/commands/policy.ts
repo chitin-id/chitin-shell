@@ -12,6 +12,8 @@ import {
   loadDefaultPolicy,
   loadPolicyFromFile,
   PolicyEngine,
+  generateKeyPair,
+  createIntent,
   determineTier,
 } from '@chitin-id/shell-core';
 import type { PolicyConfig, TierConfig } from '@chitin-id/shell-core';
@@ -285,26 +287,15 @@ async function policyTest(args: string[]): Promise<void> {
     }
   }
 
-  const engine = new PolicyEngine(policy);
+  const testKeys = generateKeyPair();
+  const engine = new PolicyEngine(policy, undefined, undefined, { trustedDids: [testKeys.did] });
   const tier = determineTier(action, policy);
 
   // Build a mock intent for testing
   const params: Record<string, unknown> = {};
   if (to) params.to = to;
 
-  const mockIntent = {
-    version: '1.0' as const,
-    intent_id: 'cli-test-' + Date.now(),
-    agent_did: 'did:key:cli-test-agent',
-    timestamp: new Date().toISOString(),
-    action: { type: action, params },
-    context: {
-      triggered_by: 'user_message' as const,
-      session_id: 'cli-test-session',
-    },
-    nonce: Date.now(),
-    signature: '00'.repeat(32),
-  };
+  const mockIntent = createIntent({ action, params }, testKeys);
 
   const result = engine.verify(mockIntent);
 

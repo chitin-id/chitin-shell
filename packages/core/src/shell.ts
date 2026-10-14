@@ -120,7 +120,7 @@ export class ChitinShell {
     const vault = options?.vault ?? new MemoryVault();
     const keyPair = generateKeyPair();
     const sanitizer = new Sanitizer(options?.additionalPatterns);
-    const policyEngine = new PolicyEngine(policyConfig, undefined, onChainLoader);
+    const policyEngine = new PolicyEngine(policyConfig, undefined, onChainLoader, { trustedDids: [keyPair.did] });
     const executor = new Executor(vault, sanitizer);
     const audit = new LocalAuditLogger(options?.auditDir);
 

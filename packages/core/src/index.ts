@@ -12,6 +12,7 @@ export type { DidResolverConfig, ResolvedDid, ParsedDid } from './intent/did-res
 
 // Policy
 export { PolicyEngine } from './policy/engine.js';
+export { ApprovalAuthority } from './policy/approval.js';
 export { RateLimiter } from './policy/rate-limiter.js';
 export { loadPolicyFromFile, loadDefaultPolicy } from './policy/loader.js';
 export { determineTier } from './policy/tier.js';

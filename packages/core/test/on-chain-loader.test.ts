@@ -1,3 +1,6 @@
+import { generateKeyPair } from "../src/intent/signer.js";
+import { createIntent } from "../src/intent/builder.js";
+const testKeys = generateKeyPair();
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   OnChainPolicyLoader,
@@ -403,18 +406,9 @@ describe('PolicyEngine.verifyOnChain', () => {
     const { OnChainPolicyLoader } = await import('../src/policy/on-chain-loader.js');
 
     const onChainLoader = new OnChainPolicyLoader(MOCK_CONFIG);
-    const engine = new PolicyEngine(loadDefaultPolicy(), undefined, onChainLoader);
+    const engine = new PolicyEngine(loadDefaultPolicy(), undefined, onChainLoader, { trustedDids: [testKeys.did] });
 
-    const intent = {
-      version: '1.0' as const,
-      intent_id: 'test-1',
-      agent_did: 'did:key:test',
-      timestamp: new Date().toISOString(),
-      action: { type: 'think', params: {} },
-      context: { triggered_by: 'user_message' as const, session_id: 'test' },
-      nonce: Date.now(),
-      signature: 'aa'.repeat(32),
-    };
+    const intent = createIntent({ action: "think", params: {} }, testKeys);
 
     const result = await engine.verifyOnChain(intent);
 

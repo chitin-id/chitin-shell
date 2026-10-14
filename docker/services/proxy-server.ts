@@ -19,6 +19,7 @@ import {
 } from './shared/http-utils.js';
 import {
   MemoryVault,
+  ApprovalAuthority,
   Sanitizer,
   Executor,
   GenericHttpMapper,
@@ -39,7 +40,9 @@ const PROXY_PORT = parseInt(process.env.PROXY_PORT ?? '3200', 10);
 
 const vault = new MemoryVault();
 const sanitizer = new Sanitizer();
-const executor = new Executor(vault, sanitizer);
+const approvalSecret = process.env.SHELL_APPROVAL_SECRET;
+if (!approvalSecret) throw new Error("SHELL_APPROVAL_SECRET is required");
+const executor = new Executor(vault, sanitizer, undefined, new ApprovalAuthority(approvalSecret));
 const startedAt = new Date().toISOString();
 
 // Register built-in mappers
@@ -55,7 +58,7 @@ async function loadVaultFromEnv(): Promise<void> {
   let count = 0;
 
   for (const [key, value] of Object.entries(process.env)) {
-    if (!key.startsWith(PROXY_PREFIX) || !value) continue;
+    if (!key.startsWith(PROXY_PREFIX) || !value || !/(?:_KEY|_TOKEN)$/.test(key)) continue;
 
     // PROXY_OPENAI_KEY -> openai
     // PROXY_ANTHROPIC_KEY -> anthropic
@@ -70,6 +73,7 @@ async function loadVaultFromEnv(): Promise<void> {
     await vault.set(serviceName, {
       type: entryType,
       value,
+      allowed_origins: (process.env[`PROXY_${serviceName.toUpperCase()}_ORIGINS`] || "").split(",").filter(Boolean),
       metadata: { source: 'environment', env_var: key },
     });
 

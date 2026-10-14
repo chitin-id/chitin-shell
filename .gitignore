@@ -16,3 +16,4 @@ docker/vault/*
 # Foundry
 contracts/out/
 contracts/cache/
+.local/
